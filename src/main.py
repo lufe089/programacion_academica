@@ -7,10 +7,13 @@ la asignación de sesiones y la exportación de resultados.
 Modos de ejecución:
     1. Generar programación automática (desde restricciones.xlsx)
     2. Regenerar desde matriz ajustada (desde inputs/programacion_matriz.xlsx)
+    3. Auditar discrepancias entre matriz y visual (outputs/)
 """
 
 import os
 import sys
+from datetime import datetime
+from openpyxl import load_workbook
 
 import pandas as pd
 
@@ -35,6 +38,7 @@ def main() -> None:
     print("Seleccione una opción:")
     print("  1. Generar programación automática")
     print("  2. Regenerar desde matriz ajustada (inputs/programacion_matriz.xlsx)")
+    print("  3. Auditar matriz vs visual (outputs/)")
     print("  0. Salir")
     print()
 
@@ -44,6 +48,8 @@ def main() -> None:
         generar_programacion_automatica()
     elif opcion == "2":
         regenerar_desde_matriz_ajustada()
+    elif opcion == "3":
+        auditar_matriz_vs_visual()
     elif opcion == "0":
         print("Saliendo...")
         return
@@ -102,36 +108,6 @@ def generar_programacion_automatica() -> None:
     # --- Asignación de sesiones ---
     sesiones = asignar_sesiones(asignaturas_del_semestre, candidatos, franjas, parametros)
     _imprimir_resumen_sesiones(asignaturas_del_semestre, sesiones)
-
-    # --- Exportación de la versión de horas ---
-    ruta_horas = os.path.join("..", "outputs", "programacion_horas.xlsx")
-    exportar_version_horas(
-        sesiones=sesiones,
-        asignaturas=asignaturas_del_semestre,
-        ruta_salida=ruta_horas,
-        inicio_clases=parametros.inicio_clases,
-    )
-    print(f"  Versión de horas exportada a '{ruta_horas}'.")
-
-    # --- Exportación de la versión de franjas ---
-    ruta_franjas = os.path.join("..", "outputs", "programacion_franjas.xlsx")
-    exportar_version_franjas(
-        sesiones=sesiones,
-        asignaturas=asignaturas_del_semestre,
-        ruta_salida=ruta_franjas,
-        inicio_clases=parametros.inicio_clases,
-    )
-    print(f"  Versión de franjas exportada a '{ruta_franjas}'.")
-
-    # --- Exportación de la versión visual ---
-    ruta_visual = os.path.join("..", "outputs", "programacion_visual.xlsx")
-    exportar_version_visual(
-        sesiones=sesiones,
-        franjas=franjas,
-        ruta_salida=ruta_visual,
-        inicio_clases=parametros.inicio_clases,
-    )
-    print(f"  Versión visual exportada a '{ruta_visual}'.")
 
     # --- Exportación de la matriz de horas ---
     ruta_matriz = os.path.join("..", "outputs", "programacion_matriz.xlsx")
@@ -202,7 +178,7 @@ def regenerar_desde_matriz_ajustada() -> None:
 
     _imprimir_resumen_sesiones(asignaturas_del_semestre, sesiones)
 
-    # --- Exportar archivos de salida ---
+      # --- Exportar archivos de salida ---
     ruta_horas = os.path.join("..", "outputs", "programacion_horas.xlsx")
     exportar_version_horas(
         sesiones=sesiones,
@@ -256,8 +232,7 @@ def _extraer_fechas_de_matriz(
     Returns:
         Diccionario {codigo: {fecha1, fecha2, ...}} con las fechas que tienen horas.
     """
-    from datetime import datetime
-    from openpyxl import load_workbook
+
 
     wb = load_workbook(ruta, data_only=True)
     ws = wb.active
@@ -353,9 +328,6 @@ def _leer_matriz_ajustada(
     Returns:
         DataFrame con las sesiones leídas de la matriz.
     """
-    from datetime import datetime
-    from openpyxl import load_workbook
-
     # Inferir año desde parámetros
     anio = parametros.inicio_clases.year
 
@@ -424,38 +396,18 @@ def _leer_matriz_ajustada(
                     asignatura = a
                     break
 
-        # Si no se encontró la asignatura en el catálogo, es una fila adicional
-        # Se procesa con información parcial (sin candidatos predefinidos)
+        # Si no se encontró la asignatura en el catálogo, se omite la fila
         es_asignatura_adicional = asignatura is None
 
-        if es_asignatura_adicional:
-            print(f"  INFO: Asignatura adicional detectada: '{nombre}' (tipo: {tipo})")
+        if not es_asignatura_adicional:
 
-        for col, fecha in fechas_por_columna.items():
-            valor = ws.cell(row=fila, column=col).value
-            if not valor or not isinstance(valor, (int, float)) or valor <= 0:
-                continue
+            for col, fecha in fechas_por_columna.items():
+                valor = ws.cell(row=fila, column=col).value
+                if not valor or not isinstance(valor, (int, float)) or valor <= 0:
+                    continue
 
-            horas = float(valor)
-            dia_nombre = dias_map.get(fecha.weekday(), "")
-
-            if es_asignatura_adicional:
-                # Para asignaturas adicionales: crear sesión con campos parciales
-                # Los campos que no conocemos se dejan vacíos o con valores por defecto
-                sesiones.append({
-                    "codigo": "",  # Sin código conocido
-                    "asignatura": nombre,
-                    "tipo": tipo if tipo else "",
-                    "fecha": fecha,
-                    "dia_semana": dia_nombre,
-                    "nombre_franja": "",  # Sin franja conocida
-                    "hora_inicio": None,
-                    "hora_fin": None,
-                    "duracion_mins": None,
-                    "horas_sesion": horas,
-                    "horas_acumuladas": 0.0,
-                })
-            else:
+                horas = float(valor)
+                dia_nombre = dias_map.get(fecha.weekday(), "")
                 # Para asignaturas del catálogo: usar candidatos respetando tipos
                 slots = candidatos_por_clave.get((asignatura.codigo, fecha))
                 if slots is None or slots.empty:
@@ -529,6 +481,295 @@ def _leer_matriz_ajustada(
         df.loc[mask, "horas_acumuladas"] = df.loc[mask, "horas_sesion"].cumsum()
 
     return df
+
+
+
+def auditar_matriz_vs_visual() -> None:
+    """
+    Opción 3: audita discrepancias entre la matriz ajustada (inputs/) y el
+    output de horas (outputs/programacion_horas.xlsx).
+
+    Flujo:
+    1. Lee restricciones para obtener catálogo y parámetros.
+    2. Lee la matriz ajustada y extrae {(codigo, fecha): horas}.
+    3. Lee programacion_horas.xlsx (hoja 'programacion') como fuente de
+       lo que efectivamente quedó en la versión visual.
+    4. Compara ambas fuentes y genera el reporte de auditoría.
+    """
+    print()
+    print("--- Auditando matriz vs visual ---")
+    print()
+
+    ruta_horas_output = os.path.join("..", "outputs", "programacion_horas.xlsx")
+
+    if not os.path.exists(RUTA_MATRIZ_AJUSTADA):
+        print(f"ERROR: No se encontró '{RUTA_MATRIZ_AJUSTADA}'")
+        print("Copie programacion_matriz.xlsx de outputs/ a inputs/ antes de auditar.")
+        return
+
+    if not os.path.exists(ruta_horas_output):
+        print(f"ERROR: No se encontró '{ruta_horas_output}'")
+        print("Ejecute primero la opción 2 para generar los archivos de salida.")
+        return
+
+    # Leer catálogo y parámetros
+    print(f"Leyendo archivo de restricciones: {RUTA_EXCEL}")
+    df_catalogo, df_parametros, df_franjas = leer_excel(RUTA_EXCEL)
+    franjas = parsear_franjas(df_franjas)
+    parametros = parsear_parametros(df_parametros)
+    asignaturas = parsear_catalogo(df_catalogo, franjas)
+    asignaturas_del_semestre = filtrar_asignaturas_del_semestre(
+        asignaturas,
+        parametros.semestre_programacion,
+    )
+
+    # Leer horas reales de la matriz
+    print(f"Leyendo horas de la matriz: {RUTA_MATRIZ_AJUSTADA}")
+    diccionario_datos = _leer_horas_de_matriz(RUTA_MATRIZ_AJUSTADA, asignaturas_del_semestre, parametros)
+    print(f"  Entradas leídas de la matriz: {len(diccionario_datos)}")
+
+    # Leer sesiones del output de horas (lo que quedó en la versión visual)
+    print(f"Leyendo sesiones del output: {ruta_horas_output}")
+    df_sesiones = pd.read_excel(ruta_horas_output, sheet_name="programacion")
+    print(f"  Sesiones leídas: {len(df_sesiones)}")
+    print()
+
+    _auditar_desde_sesiones(df_sesiones, diccionario_datos, asignaturas_del_semestre, parametros)
+
+
+def _leer_horas_de_matriz(
+    ruta: str,
+    asignaturas: list,
+    parametros,
+) -> dict[tuple, float]:
+    """
+    Lee la matriz ajustada y retorna las horas por (codigo, fecha).
+
+    A diferencia de _extraer_fechas_de_matriz (que solo indica si hay horas > 0),
+    esta función captura el valor numérico exacto de cada celda para poder
+    compararlo contra lo que quedó en la versión visual.
+
+    Args:
+        ruta: ruta al archivo de matriz ajustada.
+        asignaturas: lista de asignaturas del semestre.
+        parametros: parámetros con inicio_clases para inferir el año.
+
+    Returns:
+        Diccionario {(codigo, fecha): horas} con los valores de la matriz.
+    """
+    wb = load_workbook(ruta, data_only=True)
+    ws = wb.active
+
+    anio = parametros.inicio_clases.year
+
+    # Leer fechas de la fila 3 (formato dd/mm)
+    fechas_por_columna: dict[int, object] = {}
+    for col in range(3, ws.max_column + 1):
+        valor = ws.cell(row=3, column=col).value
+        if valor and isinstance(valor, str) and "/" in valor:
+            try:
+                dia, mes = valor.split("/")
+                fecha = datetime(anio, int(mes), int(dia)).date()
+                fechas_por_columna[col] = fecha
+            except (ValueError, AttributeError):
+                break
+        elif valor and hasattr(valor, "date"):
+            fechas_por_columna[col] = valor.date()
+        else:
+            break
+
+    if not fechas_por_columna:
+        wb.close()
+        return {}
+
+    asignatura_por_nombre = {a.nombre: a for a in asignaturas}
+    horas_por_clave: dict[tuple, float] = {}
+    fila = 5
+
+    while fila <= ws.max_row:
+        nombre = ws.cell(row=fila, column=2).value
+        if not nombre or nombre == "Horas efectivas":
+            break
+
+        asignatura = asignatura_por_nombre.get(nombre)
+        if not asignatura:
+            for a in asignaturas:
+                if a.nombre in str(nombre) or str(nombre) in a.nombre:
+                    asignatura = a
+                    break
+
+        if asignatura:
+            for col, fecha in fechas_por_columna.items():
+                valor = ws.cell(row=fila, column=col).value
+                if valor and isinstance(valor, (int, float)) and valor > 0:
+                    horas_por_clave[(asignatura.codigo, fecha)] = float(valor)
+
+        fila += 1
+
+    wb.close()
+    return horas_por_clave
+
+
+def _auditar_desde_sesiones(
+    df_sesiones: pd.DataFrame,
+    diccionario_datos: dict,
+    asignaturas: list,
+    parametros,
+) -> None:
+    """
+    Realiza la auditoría comparando el DataFrame de sesiones con los datos de la matriz.
+
+    Esta función es reutilizable y puede llamarse después de cualquier exportación
+    (opción 1, opción 2, o desde el menú de auditoría) sin necesidad de releer archivos.
+
+    Args:
+        df_sesiones: DataFrame con las sesiones exportadas (columnas: Código, Fecha, Horas sesión, etc.)
+        diccionario_datos: diccionario {(codigo, fecha): horas} con las horas de la matriz
+        asignaturas: lista de asignaturas del semestre
+        parametros: parámetros de la corrida con inicio_clases
+    """
+    # Construir visual_datos desde el DataFrame de sesiones
+    # Acumular por (codigo, fecha) en caso de múltiples sesiones el mismo día
+    visual_datos = {}  # (codigo, fecha) -> horas ACUMULADAS en ese día
+
+    for _, fila_data in df_sesiones.iterrows():
+        codigo = fila_data.get("Código")
+        fecha = fila_data.get("Fecha")
+        horas = fila_data.get("Horas sesión")
+
+        if codigo and fecha and horas:
+            if isinstance(fecha, str):
+                fecha = pd.to_datetime(fecha).date()
+            elif hasattr(fecha, "date"):
+                fecha = fecha.date()
+
+            clave = (codigo, fecha)
+            # Acumular horas por (codigo, fecha) en caso de múltiples sesiones el mismo día
+            if clave in visual_datos:
+                visual_datos[clave] += float(horas)
+            else:
+                visual_datos[clave] = float(horas)
+
+    ruta_reporte = os.path.join("..", "outputs", "auditoria_matriz_visual.txt")
+
+    # Generar reporte
+    with open(ruta_reporte, "w", encoding="utf-8") as f:
+        f.write("=" * 90 + "\n")
+        f.write("AUDITORÍA: PROGRAMACION_MATRIZ vs SESIONES EXPORTADAS\n")
+        f.write("=" * 90 + "\n\n")
+
+        # Resumen por asignatura
+        f.write("1. RESUMEN DE DISCREPANCIAS POR ASIGNATURA\n")
+        f.write("-" * 90 + "\n\n")
+
+        asignatura_por_codigo = {a.codigo: a for a in asignaturas}
+        discrepancias_totales = 0
+
+        for asignatura in asignaturas:
+            codigo = asignatura.codigo
+
+            horas_matriz = sum(h for (cod, _), h in diccionario_datos.items() if cod == codigo)
+            horas_visual = sum(h for (cod, _), h in visual_datos.items() if cod == codigo)
+
+            diferencia = horas_matriz - horas_visual
+            estado = "✓ OK" if abs(diferencia) < 0.01 else "✗ DISCREPANCIA"
+
+            if abs(diferencia) > 0.01:
+                discrepancias_totales += 1
+
+            f.write(f"[{codigo}] {asignatura.nombre[:50]:<50}\n")
+            f.write(f"  Objetivo:    {asignatura.horas_totales}h\n")
+            f.write(f"  Matriz:      {horas_matriz:.1f}h\n")
+            f.write(f"  Visual:      {horas_visual:.1f}h\n")
+            f.write(f"  Diferencia:  {diferencia:+.1f}h\n")
+            f.write(f"  {estado}\n\n")
+
+        # Detalle de discrepancias por fecha
+        f.write("\n2. DETALLE DE DISCREPANCIAS POR FECHA\n")
+        f.write("-" * 90 + "\n\n")
+
+        todas_claves = set(diccionario_datos.keys()) | set(visual_datos.keys())
+        discrepancias_por_fecha = {}
+
+        for codigo, fecha in todas_claves:
+            h_matriz = diccionario_datos.get((codigo, fecha), 0.0)
+            h_visual = visual_datos.get((codigo, fecha), 0.0)
+
+            if abs(h_matriz - h_visual) > 0.01:
+                if fecha not in discrepancias_por_fecha:
+                    discrepancias_por_fecha[fecha] = []
+                discrepancias_por_fecha[fecha].append((codigo, h_matriz, h_visual))
+
+        if discrepancias_por_fecha:
+            for fecha in sorted(discrepancias_por_fecha.keys()):
+                semana = _calcular_numero_semana(fecha, parametros.inicio_clases)
+                f.write(f"Fecha: {fecha.strftime('%A, %d de %B de %Y')} (Semana {semana})\n")
+                for codigo, h_matriz, h_visual in discrepancias_por_fecha[fecha]:
+                    asig = asignatura_por_codigo.get(codigo)
+                    nombre = asig.nombre if asig else codigo
+                    f.write(
+                        f"  [{codigo}] {nombre[:40]:<40} "
+                        f"Matriz: {h_matriz:.1f}h | Visual: {h_visual:.1f}h\n"
+                    )
+                f.write("\n")
+        else:
+            f.write("✓ Sin discrepancias detectadas\n\n")
+
+        # Sección de debug: mostrar todas las entradas leídas si hay discrepancias
+        if discrepancias_totales > 0:
+            f.write("\n" + "=" * 90 + "\n")
+            f.write("SECCIÓN DE DEBUG: ENTRADAS LEÍDAS\n")
+            f.write("=" * 90 + "\n\n")
+
+            f.write("Datos de MATRIZ (codigo, fecha) -> horas:\n")
+            f.write("-" * 90 + "\n")
+            for (cod, fecha), horas in sorted(diccionario_datos.items()):
+                f.write(f"  ({cod}, {fecha}) -> {horas:.1f}h\n")
+            f.write(f"\nTotal de entradas en matriz: {len(diccionario_datos)}\n\n")
+
+            f.write("Datos de SESIONES (codigo, fecha) -> horas:\n")
+            f.write("-" * 90 + "\n")
+            for (cod, fecha), horas in sorted(visual_datos.items()):
+                f.write(f"  ({cod}, {fecha}) -> {horas:.1f}h\n")
+            f.write(f"\nTotal de entradas en sesiones: {len(visual_datos)}\n\n")
+
+        # Resumen final
+        f.write("\n3. RESUMEN FINAL\n")
+        f.write("-" * 90 + "\n\n")
+        f.write(f"Total de asignaturas auditadas: {len(asignaturas)}\n")
+        f.write(f"Asignaturas con discrepancias: {discrepancias_totales}\n")
+        f.write(f"Fechas con discrepancias: {len(discrepancias_por_fecha)}\n\n")
+
+        if discrepancias_totales == 0:
+            f.write("✓ AUDITORÍA COMPLETADA: NO SE DETECTARON DISCREPANCIAS\n")
+        else:
+            f.write(f"✗ ADVERTENCIA: Se detectaron {discrepancias_totales} asignatura(s) con discrepancias\n")
+            f.write("  Revise los detalles anteriores para identificar las causas.\n")
+
+    print(f"Reporte guardado en: {ruta_reporte}")
+    print()
+    print(f"Total de asignaturas auditadas: {len(asignaturas)}")
+    print(f"Asignaturas con discrepancias: {discrepancias_totales}")
+    print(f"Fechas con discrepancias: {len(discrepancias_por_fecha)}")
+    print()
+
+
+def _calcular_numero_semana(fecha: datetime.date, inicio_clases: datetime.date) -> int:
+    """
+    Calcula el número de semana relativo al inicio del semestre.
+
+    Args:
+        fecha: fecha de la sesión.
+        inicio_clases: fecha de inicio de clases.
+
+    Returns:
+        Número de semana (1, 2, 3, ...).
+    """
+    import datetime as dt
+    lunes_inicio = inicio_clases - dt.timedelta(days=inicio_clases.weekday())
+    lunes_fecha = fecha - dt.timedelta(days=fecha.weekday())
+    diferencia_dias = (lunes_fecha - lunes_inicio).days
+    return (diferencia_dias // 7) + 1
 
 
 def _imprimir_resumen_parametros(parametros) -> None:
