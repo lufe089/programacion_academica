@@ -477,9 +477,13 @@ def _leer_matriz_ajustada(
 
                     # Verificar si la franja ya está ocupada por otro tipo
                     tipo_ocupante = franjas_ocupadas.get(clave_franja)
-                    if tipo_ocupante is not None and tipo_ocupante != tipo_asignatura:
-                        # La franja tiene otro tipo, saltar a la siguiente
-                        continue
+                    if tipo_ocupante is not None:
+                        if tipo_asignatura == "ProcesoDesarrollo":
+                            # ProcesoDesarrollo no puede compartir franja con nada
+                            continue
+                        elif tipo_ocupante != tipo_asignatura:
+                            # Otros tipos no pueden mezclar con diferentes tipos
+                            continue
 
                     horas_franja = min(slot["duracion_mins"] / 60, horas_restantes)
 

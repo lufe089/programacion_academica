@@ -43,6 +43,16 @@ _COLOR_FRANJA_LABEL = "F2F2F2"      # gris muy claro para etiquetas de franja
 
 
 # ---------------------------------------------------------------------------
+# Tonos de azul para asignaturas de ProcesoDesarrollo (10 variaciones)
+# ---------------------------------------------------------------------------
+
+_TONOS_AZUL_PROCESO_DESARROLLO = [
+    "A8D8EA", "9BC4D8", "8EB0C6", "81A4B4", "7498A2",
+    "678C90", "5A807E", "4D746C", "40685A", "336C48"
+]
+
+
+# ---------------------------------------------------------------------------
 # Función principal de exportación
 # ---------------------------------------------------------------------------
 
@@ -204,7 +214,7 @@ def _escribir_celdas(
                 color_fondo = _COLOR_VACIO
                 texto_celda = ""
             else:
-                color_fondo = _determinar_color_slot(sesiones_slot)
+                color_fondo = _determinar_color_slot(sesiones_slot, semana, franja.nombre)
                 texto_celda = _formatear_contenido_celda(sesiones_slot)
 
             celda = ws.cell(row=fila, column=columna, value=texto_celda)
@@ -231,15 +241,18 @@ def _formatear_etiqueta_franja(franja: Franja) -> str:
     return f"{franja.nombre}\n{hora_ini} – {hora_fin}"
 
 
-def _determinar_color_slot(sesiones_slot: pd.DataFrame) -> str:
+def _determinar_color_slot(sesiones_slot: pd.DataFrame, semana: int, franja: str) -> str:
     """
     Determina el color de fondo de una celda según el tipo de las asignaturas.
 
     Si todas las asignaturas del slot son del mismo tipo, usa el color de ese tipo.
+    Para ProcesoDesarrollo, usa tonos azules únicos por asignatura; rojo si múltiples.
     Si hay tipos mezclados, usa el color por defecto.
 
     Args:
         sesiones_slot: sesiones programadas en esa (franja, semana).
+        semana: número de semana.
+        franja: nombre de la franja.
 
     Returns:
         Código de color hexadecimal (sin #).
@@ -247,7 +260,17 @@ def _determinar_color_slot(sesiones_slot: pd.DataFrame) -> str:
     tipos_presentes = sesiones_slot["tipo"].unique()
     if len(tipos_presentes) == 1:
         tipo = tipos_presentes[0]
-        return _COLORES_POR_TIPO.get(tipo, _COLOR_DEFAULT)
+        if tipo == "ProcesoDesarrollo":
+            codigos = sesiones_slot["codigo"].unique()
+            if len(codigos) == 1:
+                return _generar_tono_azul(codigos[0])
+            else:
+                # Múltiples asignaturas de ProcesoDesarrollo en el slot
+                _log_error(semana, franja, "Múltiples asignaturas de ProcesoDesarrollo en slot")
+                print(f"ADVERTENCIA: Múltiples asignaturas de ProcesoDesarrollo en franja {franja}, semana {semana}")
+                return "FF0000"  # Rojo para error
+        else:
+            return _COLORES_POR_TIPO.get(tipo, _COLOR_DEFAULT)
     return _COLOR_DEFAULT
 
 
@@ -292,3 +315,40 @@ def _ajustar_dimensiones(ws, semanas: list[int]) -> None:
         ws.row_dimensions[fila].height = 30
 
     ws.freeze_panes = "B2"
+
+
+def _generar_tono_azul(codigo: str) -> str:
+    """
+    Genera un tono de azul único para una asignatura de ProcesoDesarrollo.
+
+    Usa un hash del código para seleccionar uno de los 10 tonos predefinidos.
+
+    Args:
+        codigo: código de la asignatura.
+
+    Returns:
+        Código de color hexadecimal (sin #).
+    """
+    import hashlib
+    hash_obj = hashlib.md5(codigo.encode())
+    index = int(hash_obj.hexdigest(), 16) % 10
+    return _TONOS_AZUL_PROCESO_DESARROLLO[index]
+
+
+def _log_error(semana: int, franja: str, causa: str) -> None:
+    """
+    Registra un error en el archivo de log.
+
+    Args:
+        semana: número de semana.
+        franja: nombre de la franja.
+        causa: descripción del error.
+    """
+    import os
+    ruta_log = os.path.join("..", "outputs", "errores_analisis.txt")
+    with open(ruta_log, "a", encoding="utf-8") as f:
+        f.write(f"Hoja: programacion_visual.xlsx\n")
+        f.write(f"Franja: {franja}\n")
+        f.write(f"Semana: {semana}\n")
+        f.write(f"Causa: {causa}\n")
+        f.write("\n")
