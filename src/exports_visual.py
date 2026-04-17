@@ -47,8 +47,8 @@ _COLOR_FRANJA_LABEL = "F2F2F2"      # gris muy claro para etiquetas de franja
 # ---------------------------------------------------------------------------
 
 _TONOS_AZUL_PROCESO_DESARROLLO = [
-    "A8D8EA", "9BC4D8", "8EB0C6", "81A4B4", "7498A2",
-    "678C90", "5A807E", "4D746C", "40685A", "336C48"
+    "A8D8EA", "9BC4D8", "8EB0C6", "81A4B4", "#748da2",
+    "#9bd3d8", "9bb5d8", "bde1ef", "bdd5ef", "e6eff9"
 ]
 
 
@@ -155,7 +155,8 @@ def _escribir_encabezados(
     for idx, semana in enumerate(semanas):
         columna = idx + 2
         lunes = lunes_por_semana[semana]
-        texto = f"S{semana}\n{lunes.strftime('%d-%b')}"
+        sabado = lunes + datetime.timedelta(days=5)
+        texto = f"S{semana}\n{lunes.strftime('%d-%b')} - {sabado.strftime('%d-%b')}"
         celda = ws.cell(row=1, column=columna, value=texto)
         celda.fill = estilo_encabezado
         celda.font = fuente_encabezado
@@ -279,17 +280,28 @@ def _formatear_contenido_celda(sesiones_slot: pd.DataFrame) -> str:
     Construye el texto de una celda con los códigos de asignatura presentes.
 
     Para cada asignatura única en el slot, muestra los últimos 6 caracteres
-    del código. Si hay varias, las separa con saltos de línea.
+    del código seguido de las fechas en que se programa en color gris.
+    Si hay varias asignaturas, las separa con saltos de línea.
 
     Args:
         sesiones_slot: sesiones programadas en esa (franja, semana).
 
     Returns:
-        Texto con los códigos de asignatura, separados por salto de línea.
+        Texto con los códigos de asignatura y fechas, separados por salto de línea.
     """
     codigos = sesiones_slot["codigo"].unique()
-    etiquetas = [codigo[-6:] for codigo in sorted(codigos)]
-    return "\n".join(etiquetas)
+    if not codigos.size:
+        return ""
+
+    lineas = []
+    for codigo in sorted(codigos):
+        etiqueta = codigo[-10:]
+        # Fechas para este código
+        fechas = sesiones_slot[sesiones_slot["codigo"] == codigo]["fecha"].unique()
+        fechas_str = ", ".join(f.strftime("%d-%b") for f in sorted(fechas))
+        lineas.append(f"{etiqueta} ({fechas_str})")
+
+    return "\n".join(lineas)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +317,7 @@ def _ajustar_dimensiones(ws, semanas: list[int]) -> None:
         semanas: lista de semanas, usada para saber cuántas columnas de datos hay.
     """
     ws.column_dimensions["A"].width = 28
-    ancho_semana = 11
+    ancho_semana = 15
     for idx in range(len(semanas)):
         letra = get_column_letter(idx + 2)
         ws.column_dimensions[letra].width = ancho_semana
