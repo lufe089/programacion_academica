@@ -47,8 +47,8 @@ _COLOR_FRANJA_LABEL = "F2F2F2"      # gris muy claro para etiquetas de franja
 # ---------------------------------------------------------------------------
 
 _TONOS_AZUL_PROCESO_DESARROLLO = [
-    "A8D8EA", "9BC4D8", "8EB0C6", "81A4B4", "#748da2",
-    "#9bd3d8", "9bb5d8", "bde1ef", "bdd5ef", "e6eff9"
+    "A8D8EA", "9BC4D8", "8EB0C6", "8fedf2", "748da2",
+    "9bd3d8", "9bb5d8", "2686ab", "bdd5ef", "e6eff9"
 ]
 
 
