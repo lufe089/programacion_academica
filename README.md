@@ -95,7 +95,7 @@ Ese archivo se considera la **plantilla base de entrada** para la versión 1.
 
 ## 5.1 Modos de ejecución
 
-El sistema ofrece un menú interactivo con dos modos de ejecución:
+El sistema ofrece un menú interactivo con cuatro modos de ejecución:
 
 ### Opción 1: Generar programación automática
 
@@ -104,6 +104,7 @@ Ejecuta el flujo completo:
 2. Construye el calendario de slots disponibles
 3. Asigna sesiones automáticamente según las reglas
 4. Genera todos los archivos de salida en `outputs/`
+5. **Audita automáticamente** la programación generada y crea un reporte de validación en `outputs/auditoria_matriz_visual.txt`
 
 ### Opción 2: Regenerar desde matriz ajustada
 
@@ -112,6 +113,7 @@ Permite que el usuario ajuste manualmente la programación:
 2. Ajustar manualmente las horas en la matriz (agregar, quitar o mover horas entre fechas)
 3. Ejecutar la opción 2 del menú
 4. El sistema regenera los archivos de salida
+5. **Audita automáticamente** la programación regenerada y crea un reporte de validación en `outputs/auditoria_matriz_visual.txt`
 
 #### Flujo técnico de la opción 2
 
@@ -146,6 +148,95 @@ El sistema conserva las filas adicionales que el usuario agregue manualmente en 
 - Estas sesiones se incluyen en los archivos de salida regenerados
 
 **Nota**: La matriz usa fórmulas de Excel en las columnas de totales (Asignadas, Diferencia, Estado) para que el usuario pueda verificar que sus ajustes son correctos antes de regenerar.
+
+---
+
+### Opción 3: Auditar matriz vs visual (Manual - Opcional)
+
+Permite auditar manualmente archivos ya generados **sin ejecutar el flujo principal**.
+
+#### Cuándo usar esta opción
+
+Esta opción es útil si:
+- Ejecutó las opciones 1 o 2 en una sesión anterior y ahora desea verificar nuevamente
+- Desea comparar archivos específicos sin regenerar la programación
+- Necesita revisar el reporte de auditoría sin pasar por todo el flujo
+
+**Nota:** Las opciones 1 y 2 generan el reporte de auditoría automáticamente, por lo que generalmente no es necesario usar esta opción.
+
+#### Cómo usar
+
+1. Asegúrese de que existan `outputs/programacion_matriz.xlsx` y `outputs/programacion_horas.xlsx`
+2. Seleccione la opción 3 en el menú principal
+3. El sistema genera automáticamente un reporte en `outputs/auditoria_matriz_visual.txt`
+
+#### Interpretación del reporte
+
+El reporte tiene tres secciones:
+
+**Sección 1: Resumen de discrepancias por asignatura**
+- Para cada asignatura muestra:
+  - Objetivo: horas totales según catálogo
+  - Matriz: horas programadas en la matriz
+  - Visual: horas asignadas en la versión visual
+  - Diferencia: diferencia calculada (Matriz - Visual)
+  - Estado: ✓ OK si la diferencia es ≤ 0.01, o ✗ DISCREPANCIA
+
+**Sección 2: Detalle de discrepancias por fecha**
+- Muestra las asignaturas que tienen discrepancias en fechas específicas
+- Útil para localizar rápidamente dónde está el problema
+
+**Sección 3: Resumen final**
+- Resumen ejecutivo:
+  - Total de asignaturas auditadas
+  - Cantidad con discrepancias
+  - Cantidad de fechas con diferencias
+  - Resultado final (✓ sin discrepancias o ✗ con advertencias)
+
+#### Causas comunes de discrepancias
+
+1. **Conflicto de tipos de asignatura**: Si hay una mezcla de tipos incompatibles en la misma franja
+2. **Franjas insuficientes**: Si no hay suficientes franjas disponibles para todas las horas
+3. **Formato de fecha incorrecto**: Si las fechas en la matriz no coinciden con el calendario esperado
+4. **Asignaturas no encontradas**: Si una asignatura de la matriz no existe en el catálogo
+
+---
+
+### Opción 4: Generar calendario base institucional
+
+Genera la plantilla de calendario semestral en formato institucional a partir
+del visual ajustado manualmente.
+
+#### Flujo
+
+1. Asegurarse de que exista `inputs/programacion_visual.xlsx` (copia ajustada del visual).
+2. Seleccionar la opción 4 en el menú principal.
+3. El sistema genera `outputs/calendario_base.xlsx`.
+
+#### Qué produce
+
+Un Excel con una fila por semana del semestre, desde la semana de inducción
+hasta la semana de fin de clases, con esta estructura de columnas:
+
+- **Mes** — nombre del mes, fusionado verticalmente por mes calendario.
+- **SEM** — número de semana (empieza en `SEMANA_INICIO`, parámetro del Excel).
+- **FECHA + columna de contenido** — para cada franja horaria: la fecha del día y las asignaturas programadas.
+- **Domingo** — fecha del domingo de la semana.
+
+Los eventos especiales se muestran con colores diferenciados:
+
+| Evento | Celdas afectadas |
+|---|---|
+| Inducción | Viernes anterior a `FECHA_INDUCCION`: FRANJA_DOS y FRANJA_TRES. `FECHA_INDUCCION` (sábado): FRANJA_UNO y FRANJA_DOS. |
+| Festivo | Todas las franjas del día festivo |
+| Semana de reflexión | Todas las franjas de la semana completa |
+| Presencial | Celdas de las franjas del día presencial (con contenido del visual) |
+
+#### Fuente de datos
+
+La programación de asignaturas se lee de `inputs/programacion_visual.xlsx`
+(ajustado manualmente). Los parámetros del semestre y las franjas se leen de
+`inputs/restricciones.xlsx`.
 
 ---
 
@@ -562,6 +653,7 @@ Parámetros esperados hasta ahora:
 - `SABADO_PRESENCIAL_UNO`
 - `VIERNES_PRESENCIAL_DOS`
 - `SABADO_PRESENCIAL_DOS`
+- `SEMANA_INICIO` *(opcional)* — número de semana que se asigna a la primera semana del calendario base. Si no se define, se usa 1.
 
 Estos parámetros pueden crecer en el futuro, por lo que el lector debe ser flexible para aceptar nuevas claves.
 
@@ -650,46 +742,7 @@ El sistema debe usar esta hoja para:
 
 ## 13. Salidas esperadas
 
-### 13.1 Salida principal inicial: versión de horas
-La primera salida importante del sistema será una tabla detallada con información como:
-
-- asignatura
-- fecha
-- día
-- franja
-- duración de la sesión
-- horas acumuladas por asignatura
-- observaciones o restricciones aplicadas
-
-Esta salida representa el detalle fino de la programación sesión por sesión.
-
-### 13.2 Salida intermedia: versión de franjas
-El sistema también deberá generar una hoja de **franjas**, orientada a resumir períodos en los que una asignatura mantiene el mismo horario.
-
-Esta salida debe permitir identificar entre qué semanas y entre qué fechas una misma franja de horario se mantiene para una asignatura.
-
-Cada registro de esta salida debe consolidar bloques continuos de programación con el mismo patrón horario.
-
-Campos esperados para esta salida:
-
-- asignatura
-- semana inicio
-- semana fin
-- fecha inicio
-- día semana de inicio
-- fecha fin
-- día semana de fin
-- hora de inicio
-- hora de fin
-- cantidad de horas
-
-Ejemplo de interpretación:  
-Si una asignatura mantiene la franja de viernes de 2:00 pm a 6:30 pm entre varias semanas consecutivas, la hoja de franjas debe mostrar ese tramo como un único bloque consolidado, en lugar de repetir una fila por cada sesión individual.
-
-Esta salida sirve para entender la continuidad de las franjas y facilitar la revisión administrativa de la programación.
-
-
-### 13.3 Salida matriz de horas
+### 13.1 Salida matriz de horas
 
 La salida de **matriz de horas** es la herramienta de trabajo para la asignación y validación de la programación.
 
@@ -1081,10 +1134,49 @@ El ciclo de trabajo típico para ajustar la programación es:
 
 La matriz nunca se sobreescribe en la opción 2: siempre es la fuente de verdad del ajuste manual.
 
-### 13.5 Salida posterior: versión gráfica
+### 13.5 Salidas posteriores: 
 Después de tener la programación lógica en horas, el sistema deberá poder transformarla en una versión gráfica tipo calendario.
+Además de la versión gráfica se crean las siguientes salidas:
 
-La versión gráfica no es la prioridad inicial, pero el modelo de datos debe diseñarse pensando en soportarla después.
+### 13.5.1 Salida: versión de horas
+La primera salida importante del sistema será una tabla detallada con información como:
+
+- asignatura
+- fecha
+- día
+- franja
+- duración de la sesión
+- horas acumuladas por asignatura
+- observaciones o restricciones aplicadas
+
+Esta salida representa el detalle fino de la programación sesión por sesión.
+
+### 13.5.2 Salida intermedia: versión de franjas
+El sistema también deberá generar una hoja de **franjas**, orientada a resumir períodos en los que una asignatura mantiene el mismo horario.
+
+Esta salida debe permitir identificar entre qué semanas y entre qué fechas una misma franja de horario se mantiene para una asignatura.
+
+Cada registro de esta salida debe consolidar bloques continuos de programación con el mismo patrón horario.
+
+Campos esperados para esta salida:
+
+- asignatura
+- semana inicio
+- semana fin
+- fecha inicio
+- día semana de inicio
+- fecha fin
+- día semana de fin
+- hora de inicio
+- hora de fin
+- cantidad de horas
+
+Ejemplo de interpretación:  
+Si una asignatura mantiene la franja de viernes de 2:00 pm a 6:30 pm entre varias semanas consecutivas, la hoja de franjas debe mostrar ese tramo como un único bloque consolidado, en lugar de repetir una fila por cada sesión individual.
+
+Esta salida sirve para entender la continuidad de las franjas y facilitar la revisión administrativa de la programación.
+
+
 
 ---
 
@@ -1182,6 +1274,20 @@ Genera la vista gráfica en `outputs/programacion_visual.xlsx`:
 - paneles congelados en B2 para facilitar la navegación
 
 
+### `exports_calendario_base.py` ✅
+Genera la plantilla de calendario base institucional en `outputs/calendario_base.xlsx`:
+
+- Lee `inputs/programacion_visual.xlsx` como fuente de verdad de la programación.
+- Construye una fila por semana desde la semana de inducción hasta fin de clases.
+- Columnas: Mes (fusionado por mes) | SEM | FECHA+Lunes | FECHA+franja×N | Domingo.
+- Las franjas y su orden se leen desde `inputs/restricciones.xlsx` (hoja `franjas`).
+- Eventos especiales con colores diferenciados:
+  - Inducción: viernes anterior a `FECHA_INDUCCION` en FRANJA_DOS y FRANJA_TRES; `FECHA_INDUCCION` (sábado) en FRANJA_UNO y FRANJA_DOS.
+  - Festivo: todas las franjas del día.
+  - Semana de reflexión: toda la semana.
+  - Presencial: celdas del día presencial resaltadas en verde.
+- Función pública: `exportar_calendario_base_desde_visual(ruta_visual_entrada, parametros, franjas, ruta_salida)`.
+
 ### `exports_matriz.py` ✅ iteración 7
 Genera la matriz de horas en `outputs/programacion_matriz.xlsx`:
 
@@ -1203,8 +1309,8 @@ Genera la matriz de horas en `outputs/programacion_matriz.xlsx`:
   - semanas con encuentro presencial: fondo verde claro (aplica a toda la semana)
 - paneles congelados en C5 para mantener visibles Tipo, Asignatura y encabezados
 
-### `main.py` ✅ iteración 7
-Orquestador del flujo principal con menú de dos modos de ejecución:
+### `main.py` ✅
+Orquestador del flujo principal con menú de cuatro modos de ejecución:
 
 **Opción 1 — Generar programación automática:**
 Lee `inputs/restricciones.xlsx`, ejecuta el scheduler y exporta los cuatro
@@ -1217,15 +1323,16 @@ en la matriz y regenera `programacion_horas.xlsx`, `programacion_franjas.xlsx`
 y `programacion_visual.xlsx`. La matriz en sí no se sobreescribe (es la fuente
 del ajuste).
 
-Este segundo modo permite al usuario aplicar correcciones manuales a la
-programación automática y luego obtener las demás salidas actualizadas, sin
-necesidad de re-ejecutar el scheduler.
+**Opción 3 — Auditar matriz vs visual:**
+Compara `inputs/programacion_matriz.xlsx` con `outputs/programacion_horas.xlsx`
+y genera el reporte `outputs/auditoria_matriz_visual.txt`.
 
-**Asignaturas adicionales:** El sistema conserva las filas que el usuario
-agregue manualmente en la matriz aunque no existan en el catálogo original.
-Para estas asignaturas, se crean sesiones con los campos disponibles (nombre,
-tipo, fecha, horas) dejando vacíos los campos que no se pueden inferir (código,
-franja, hora inicio/fin).
+**Opción 4 — Generar calendario base:**
+Lee `inputs/programacion_visual.xlsx` (ajustado manualmente) y genera
+`outputs/calendario_base.xlsx` con la plantilla de calendario institucional.
+
+
+
 
 ---
 
@@ -1384,10 +1491,11 @@ Se prefiere un estilo de programación más explícito, legible y mantenible, in
 - La hoja `parametros` se lee sin encabezados. Las claves se normalizan
   (strip + espacios → _) para tolerar inconsistencias menores del Excel.
 - El sistema genera cuatro archivos de salida en `outputs/`:
-  `programacion_horas.xlsx` (detalle sesión a sesión),
-  `programacion_franjas.xlsx` (bloques continuos consolidados),
-  `programacion_visual.xlsx` (cuadrícula calendario con colores),
   `programacion_matriz.xlsx` (matriz de horas por asignatura y fecha para revisión humana).
+- Cuando se ajusta la programación manualmente en esta matriz, se puede usar la opción 2 para regenerar las demás salidas a partir de la matriz ajustada
+  - `programacion_horas.xlsx` (detalle sesión a sesión),
+    `programacion_franjas.xlsx` (bloques continuos consolidados),
+    `programacion_visual.xlsx` (cuadrícula calendario con colores),
 - La función `calcular_numero_semana` es pública en `exports_hours.py`
   y es compartida por los tres módulos de exportación.
 - Las restricciones de tipo se implementan con un único mecanismo de `slots_ocupados`:
@@ -1406,33 +1514,17 @@ Se prefiere un estilo de programación más explícito, legible y mantenible, in
 - La reconstrucción de sesiones desde la matriz asigna franjas en orden definición
   (la primera franja del día que cubre las horas indicadas) y recalcula
   `horas_acumuladas` mediante cumsum ordenado por fecha.
+- El calendario base (`exports_calendario_base.py`) se construye leyendo
+  `inputs/programacion_visual.xlsx` como fuente de verdad, no desde las sesiones
+  crudas ni desde el scheduler. Esto permite que el usuario ajuste manualmente
+  el visual y luego genere el calendario base como paso siguiente.
+- La regla de inducción en el calendario base aplica solo a dos fechas y franjas
+  específicas: el viernes anterior a `FECHA_INDUCCION` (FRANJA_DOS y FRANJA_TRES de
+  viernes) y `FECHA_INDUCCION` misma (FRANJA_UNO y FRANJA_DOS de sábado).
+- El parámetro `SEMANA_INICIO` (opcional, default 1) controla el número de semana
+  que se asigna a la primera fila del calendario base.
 
 ---
-
-## 19. Preguntas abiertas o puntos a afinar después
-
-Aunque ya existe una base bastante sólida, hay temas que probablemente se podrán refinar en iteraciones posteriores, por ejemplo:
-
-- cómo desempatar entre varias soluciones válidas
-- cómo seleccionar automáticamente la mejor franja compartida
-- qué hacer cuando una asignatura no cabe completamente sin usar parciales
-- cómo parsear de forma robusta las restricciones específicas en lenguaje natural
-- cómo transformar la salida lógica a la plantilla gráfica final
-
----
-
-## 20. Objetivo inmediato para Claude
-
-A partir de este documento, Claude debe empezar construyendo una primera base técnica que:
-
-1. lea correctamente el Excel
-2. valide hojas y columnas
-3. construya el calendario académico programable
-4. represente cursos, franjas, parámetros y eventos con modelos claros
-5. genere la base para una salida detallada de horas
-6. genere una salida consolidada de franjas
-7. deje lista la base para construir luego el motor de asignación completo y la versión gráfica
-8. mantenga un estilo de código explícito, claro, bien documentado y fácil de mantener
 
 ## Regla transversal de desarrollo
 

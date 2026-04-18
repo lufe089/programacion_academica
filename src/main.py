@@ -19,6 +19,7 @@ import pandas as pd
 
 from calendar_builder import construir_calendario
 from excel_reader import leer_excel, parsear_catalogo, parsear_franjas, parsear_parametros
+from exports_calendario_base import exportar_calendario_base_desde_visual
 from exports_franjas import exportar_version_franjas
 from exports_hours import exportar_version_horas
 from exports_matriz import exportar_matriz_horas
@@ -39,6 +40,7 @@ def main() -> None:
     print("  1. Generar programación automática")
     print("  2. Regenerar desde matriz ajustada (inputs/programacion_matriz.xlsx)")
     print("  3. Auditar matriz vs visual (outputs/)")
+    print("  4. Generar calendario base desde visual ajustado (inputs/programacion_visual.xlsx)")
     print("  0. Salir")
     print()
 
@@ -50,6 +52,8 @@ def main() -> None:
         regenerar_desde_matriz_ajustada()
     elif opcion == "3":
         auditar_matriz_vs_visual()
+    elif opcion == "4":
+        generar_calendario_base()
     elif opcion == "0":
         print("Saliendo...")
         return
@@ -751,6 +755,55 @@ def _auditar_desde_sesiones(
     print(f"Total de asignaturas auditadas: {len(asignaturas)}")
     print(f"Asignaturas con discrepancias: {discrepancias_totales}")
     print(f"Fechas con discrepancias: {len(discrepancias_por_fecha)}")
+    print()
+
+
+def generar_calendario_base() -> None:
+    """
+    Opción 4: genera el calendario base institucional desde el visual ajustado.
+
+    Lee inputs/programacion_visual.xlsx como fuente de verdad de la
+    programación (puede ser el archivo ajustado manualmente) y genera
+    outputs/calendario_base.xlsx con el formato de plantilla institucional:
+    una fila por semana, columnas FECHA + franja por cada franja horaria,
+    y eventos especiales resaltados con colores.
+
+    Requiere:
+    - inputs/programacion_visual.xlsx (fuente de la programación)
+    - inputs/restricciones.xlsx (para leer parámetros y franjas)
+    """
+    ruta_visual = os.path.join("..", "inputs", "programacion_visual.xlsx")
+    ruta_salida = os.path.join("..", "outputs", "calendario_base.xlsx")
+
+    print()
+    print("--- Generando calendario base desde visual ajustado ---")
+    print()
+
+    if not os.path.exists(ruta_visual):
+        print(f"ERROR: No se encontró '{ruta_visual}'")
+        print("Copie el archivo programacion_visual.xlsx de outputs/ a inputs/ y ajústelo.")
+        return
+
+    # Leer parámetros y franjas desde restricciones.xlsx
+    print(f"Leyendo archivo de restricciones: {RUTA_EXCEL}")
+    df_catalogo, df_parametros, df_franjas = leer_excel(RUTA_EXCEL)
+    franjas = parsear_franjas(df_franjas)
+    parametros = parsear_parametros(df_parametros)
+
+    print(f"Generando calendario base desde: {ruta_visual}")
+    print(f"  Semana inicio: {parametros.semana_inicio}")
+    print(f"  Fecha inducción: {parametros.fecha_induccion}")
+    print(f"  Inicio clases: {parametros.inicio_clases}")
+    print(f"  Fin clases: {parametros.fin_clases if parametros.fin_clases else 'No definida'}")
+    print()
+
+    exportar_calendario_base_desde_visual(
+        ruta_visual_entrada=ruta_visual,
+        parametros=parametros,
+        franjas=franjas,
+        ruta_salida=ruta_salida,
+    )
+    print(f"Calendario base generado: {ruta_salida}")
     print()
 
 

@@ -129,3 +129,4 @@ class Parametros:
     sabado_presencial_uno: date | None = None
     viernes_presencial_dos: date | None = None
     sabado_presencial_dos: date | None = None
+    semana_inicio: int = 1

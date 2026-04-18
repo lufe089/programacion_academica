@@ -250,6 +250,11 @@ def parsear_parametros(df_parametros: pd.DataFrame) -> Parametros:
         mapa_parametros.get(config.CLAVE_SABADO_PRESENCIAL_DOS)
     )
 
+    # Número de semana inicial para el calendario base (opcional, default 1)
+    semana_inicio = _parsear_semana_inicio(
+        mapa_parametros.get(config.CLAVE_SEMANA_INICIO)
+    )
+
     return Parametros(
         semestre_programacion=semestre_programacion,
         fecha_induccion=fecha_induccion,
@@ -262,7 +267,36 @@ def parsear_parametros(df_parametros: pd.DataFrame) -> Parametros:
         sabado_presencial_uno=sabado_presencial_uno,
         viernes_presencial_dos=viernes_presencial_dos,
         sabado_presencial_dos=sabado_presencial_dos,
+        semana_inicio=semana_inicio,
     )
+
+
+def _parsear_semana_inicio(valor) -> int:
+    """
+    Parsea el valor de SEMANA_INICIO en un entero.
+
+    Si el valor es None, NaN, o no parseable, retorna 1 como valor por defecto.
+
+    Args:
+        valor: valor crudo leído desde la celda del Excel (puede ser None o NaN).
+
+    Returns:
+        Número entero de la semana inicial (≥ 1).
+    """
+    if valor is None:
+        return 1
+
+    try:
+        if pd.isna(valor):
+            return 1
+    except (TypeError, ValueError):
+        pass
+
+    try:
+        resultado = int(valor)
+        return resultado if resultado >= 1 else 1
+    except (ValueError, TypeError):
+        return 1
 
 
 def _construir_mapa_parametros(df_parametros: pd.DataFrame) -> dict:

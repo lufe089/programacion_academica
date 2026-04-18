@@ -88,6 +88,10 @@ CLAVE_SABADO_PRESENCIAL_UNO = "SABADO_PRESENCIAL_UNO"
 CLAVE_VIERNES_PRESENCIAL_DOS = "VIERNES_PRESENCIAL_DOS"
 CLAVE_SABADO_PRESENCIAL_DOS = "SABADO_PRESENCIAL_DOS"
 
+# Clave opcional para el número de la semana inicial en el calendario base.
+# Si no se define en el Excel, la primera semana del calendario se numera como 1.
+CLAVE_SEMANA_INICIO = "SEMANA_INICIO"
+
 CLAVES_REQUERIDAS_PARAMETROS = [
     CLAVE_SEMESTRE_PROGRAMACION,
     CLAVE_FECHA_INDUCCION,
